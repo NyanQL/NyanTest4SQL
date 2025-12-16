@@ -1,0 +1,22 @@
+{
+  "name": "にゃんてすと",
+  "profile": "これはニャンをテストするためのツールです。",
+  "version": "0.0.1",
+  "DBType": "sqlite",
+  "DBUser": "",
+  "DBPassword": "",
+  "DBName": "../../NyanQL/nyanID.db",
+  "DBHost": "",
+  "DBPort": "",
+  "MaxOpenConnections": 10,
+  "MaxIdleConnections": 5,
+  "ConnMaxLifetimeSeconds": 3600,
+  "log": {
+    "Filename": "./logs/nyanql.log",
+    "MaxSize": 5,
+    "MaxBackups": 3,
+    "MaxAge": 7,
+    "Compress": true,
+    "EnableLogging": false
+  }
+}
