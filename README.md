@@ -181,4 +181,4 @@ NyanTest4SQL は `test.json` の **テスト名** を単位に実行します。
 
 ## ライセンス
 
-本プロジェクトは MIT License の下で公開されています。詳細は `LICENSE` を参照してください。
+本プロジェクトは MIT License の下で公開されています。詳細は [LICENSE](https://github.com/NyanQL/NyanTest4SQL/blob/main/LICENSE.md) を参照してください。
