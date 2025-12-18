@@ -1,4 +1,4 @@
-name: release
+name: release-binaries
 
 on:
   push:
@@ -14,50 +14,36 @@ env:
 
 jobs:
   build:
-    name: build (${{ matrix.goos }}/${{ matrix.goarch }})
+    name: build (${{ matrix.label }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux x64
-          - runs_on: ubuntu-latest
-            goos: linux
-            goarch: amd64
-          # Linux arm64（GitHub-hosted runner）
-          - runs_on: ubuntu-24.04-arm
-            goos: linux
-            goarch: arm64
-          # Windows x64
-          - runs_on: windows-latest
-            goos: windows
-            goarch: amd64
-          # macOS arm64
-          - runs_on: macos-15
-            goos: darwin
-            goarch: arm64
-          # macOS x64（Intel）
-          - runs_on: macos-15-intel
-            goos: darwin
-            goarch: amd64
+          - runner: ubuntu-latest
+            label: ubuntu
+            exe: ""
+          - runner: windows-latest
+            label: windows
+            exe: ".exe"
+          - runner: macos-latest
+            label: macos
+            exe: ""
 
-    runs-on: ${{ matrix.runs_on }}
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - uses: actions/checkout@v4
 
-      # go-duckdb は CGO が必要（undefined: conn 等の原因になりがち）:contentReference[oaicite:1]{index=1}
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
 
-      # Linux: cgo 用ツールチェイン
-      - name: Install build tools (Linux)
+      - name: Install build tools (Ubuntu)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential
 
-      # Windows: go-duckdb README 推奨の msys2 + mingw gcc :contentReference[oaicite:2]{index=2}
       - name: Setup MSYS2 (Windows)
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
@@ -75,61 +61,56 @@ jobs:
 
       - name: Set VERSION
         shell: bash
-        run: |
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
-          else
-            echo "VERSION=dev-${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
-          fi
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
 
       - name: Go test
         env:
           CGO_ENABLED: "1"
         run: go test ./...
 
-      # Build (non-Windows)
-      - name: Build (Linux/macOS)
+      - name: Build & Zip (Ubuntu/macOS)
         if: runner.os != 'Windows'
         shell: bash
         env:
           CGO_ENABLED: "1"
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
         run: |
           mkdir -p dist
           go build -trimpath -ldflags "-s -w" -o "dist/${BIN_NAME}" .
 
-          ASSET="${BIN_NAME}_${VERSION}_${GOOS}_${GOARCH}"
-          tar -C dist -czf "dist/${ASSET}.tar.gz" "${BIN_NAME}"
-          (cd dist && shasum -a 256 "${ASSET}.tar.gz" > "${ASSET}.tar.gz.sha256") || \
-          (cd dist && sha256sum "${ASSET}.tar.gz" > "${ASSET}.tar.gz.sha256")
+          ASSET="${BIN_NAME}_${{ matrix.label }}-${VERSION}"
+          (cd dist && zip -9 "${ASSET}.zip" "${BIN_NAME}")
 
-      # Build (Windows)
-      - name: Build (Windows)
+          if command -v sha256sum >/dev/null 2>&1; then
+            (cd dist && sha256sum "${ASSET}.zip" > "${ASSET}.zip.sha256")
+          else
+            (cd dist && shasum -a 256 "${ASSET}.zip" > "${ASSET}.zip.sha256")
+          fi
+
+      - name: Build & Zip (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         env:
           CGO_ENABLED: "1"
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          go build -trimpath -ldflags "-s -w" -o ("dist\" + $env:BIN_NAME + ".exe") .
+          $exePath = "dist\$($env:BIN_NAME)${{ matrix.exe }}"
+          go build -trimpath -ldflags "-s -w" -o $exePath .
 
-          $asset = "$($env:BIN_NAME)_$($env:VERSION)_$($env:GOOS)_$($env:GOARCH)"
-          Compress-Archive -Path ("dist\" + $env:BIN_NAME + ".exe") -DestinationPath ("dist\" + $asset + ".zip") -Force
+          $asset = "$($env:BIN_NAME)_${{ matrix.label }}-$($env:VERSION)"
+          $zipPath = "dist\$asset.zip"
+          Compress-Archive -Path $exePath -DestinationPath $zipPath -Force
 
-          $hash = (Get-FileHash -Algorithm SHA256 ("dist\" + $asset + ".zip")).Hash.ToLower()
-          "$hash  $asset.zip" | Out-File -Encoding ascii ("dist\" + $asset + ".zip.sha256")
+          $hash = (Get-FileHash -Algorithm SHA256 $zipPath).Hash.ToLower()
+          "$hash  $asset.zip" | Out-File -Encoding ascii ("dist\$asset.zip.sha256")
 
-      - name: Upload artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: dist-${{ matrix.label }}
           path: dist/*
 
   release:
-    name: Create GitHub Release
+    name: Publish GitHub Release assets
     if: startsWith(github.ref, 'refs/tags/')
     needs: build
     runs-on: ubuntu-latest
@@ -140,7 +121,7 @@ jobs:
           path: dist_all
           merge-multiple: true
 
-      - name: Publish release
+      - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist_all/*
