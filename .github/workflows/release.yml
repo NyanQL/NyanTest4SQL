@@ -34,7 +34,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # --- 追加: setup-go のキャッシュ復元より前に Go telemetry を OFF にする ---
       - name: Disable Go telemetry (Linux/macOS)
         if: runner.os != 'Windows'
         shell: bash
@@ -58,10 +57,9 @@ jobs:
           $dir = Join-Path $env:APPDATA "go\telemetry"
           New-Item -ItemType Directory -Force $dir | Out-Null
           "off" | Out-File -Encoding ascii (Join-Path $dir "mode")
-      # --- 追加ここまで ---
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
