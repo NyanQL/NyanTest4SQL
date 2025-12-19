@@ -39,6 +39,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          # キャッシュの整合性を高めるために追加
+          cache-dependency-path: go.sum
 
       - name: Install build tools (Ubuntu)
         if: runner.os == 'Linux'
@@ -52,12 +54,6 @@ jobs:
           update: true
           install: >-
             mingw-w64-ucrt-x86_64-gcc
-
-      - name: Add MSYS2 gcc to PATH (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          "C:\msys64\ucrt64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Set VERSION
         shell: bash
@@ -76,10 +72,12 @@ jobs:
         run: |
           mkdir -p dist
           go build -trimpath -ldflags "-s -w" -o "dist/${BIN_NAME}" .
-
+          
           ASSET="${BIN_NAME}_${{ matrix.label }}-${VERSION}"
+          # zipに固める
           (cd dist && zip -9 "${ASSET}.zip" "${BIN_NAME}")
-
+          
+          # チェックサム作成
           if command -v sha256sum >/dev/null 2>&1; then
             (cd dist && sha256sum "${ASSET}.zip" > "${ASSET}.zip.sha256")
           else
@@ -91,6 +89,8 @@ jobs:
         shell: pwsh
         env:
           CGO_ENABLED: "1"
+          # WindowsでのCGOビルド用にGCCをパスに通す
+          PATH: C:\msys64\ucrt64\bin;${{ env.PATH }}
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           $exePath = "dist\$($env:BIN_NAME)${{ matrix.exe }}"
@@ -107,7 +107,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.label }}
-          path: dist/*
+          # 成果物（zipとsha256）のみをアップロードするように変更
+          path: |
+            dist/*.zip
+            dist/*.sha256
 
   release:
     name: Publish GitHub Release assets
@@ -126,3 +129,4 @@ jobs:
         with:
           files: dist_all/*
           generate_release_notes: true
+          
