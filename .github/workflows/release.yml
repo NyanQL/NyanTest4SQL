@@ -92,46 +92,78 @@ jobs:
           CGO_ENABLED: "1"
         run: go test ./...
 
-      - name: Build & Zip (Ubuntu/macOS)
+      - name: Build & Zip (Ubuntu/macOS) [include README.md]
         if: runner.os != 'Windows'
         shell: bash
         env:
           CGO_ENABLED: "1"
         run: |
+          set -euo pipefail
           mkdir -p dist
+
+          # README を dist に置く（zip同梱用）
+          if [ -f "README.md" ]; then
+            cp -f README.md dist/README.md
+          else
+            echo "README.md not found"
+            exit 1
+          fi
+
+          # build
           go build -trimpath -ldflags "-s -w" -o "dist/${BIN_NAME}" .
 
           ASSET="${BIN_NAME}_${{ matrix.label }}-${VERSION}"
-          (cd dist && zip -9 "${ASSET}.zip" "${BIN_NAME}")
 
+          # zip（BIN + README を同梱）
+          (cd dist && zip -9 "${ASSET}.zip" "${BIN_NAME}" "README.md")
+
+          # sha256
           if command -v sha256sum >/dev/null 2>&1; then
             (cd dist && sha256sum "${ASSET}.zip" > "${ASSET}.zip.sha256")
           else
             (cd dist && shasum -a 256 "${ASSET}.zip" > "${ASSET}.zip.sha256")
           fi
 
-      - name: Build & Zip (Windows)
+          ls -la dist
+
+      - name: Build & Zip (Windows) [include README.md]
         if: runner.os == 'Windows'
         shell: pwsh
         env:
           CGO_ENABLED: "1"
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
+
+          # README を dist に置く（zip同梱用）
+          if (Test-Path "README.md") {
+            Copy-Item "README.md" "dist\README.md" -Force
+          } else {
+            Write-Error "README.md not found"
+            exit 1
+          }
+
+          # build
           $exePath = "dist\$($env:BIN_NAME)${{ matrix.exe }}"
           go build -trimpath -ldflags "-s -w" -o $exePath .
 
           $asset = "$($env:BIN_NAME)_${{ matrix.label }}-$($env:VERSION)"
           $zipPath = "dist\$asset.zip"
-          Compress-Archive -Path $exePath -DestinationPath $zipPath -Force
 
+          # zip（BIN + README を同梱）
+          Compress-Archive -Path @($exePath, "dist\README.md") -DestinationPath $zipPath -Force
+
+          # sha256
           $hash = (Get-FileHash -Algorithm SHA256 $zipPath).Hash.ToLower()
           "$hash  $asset.zip" | Out-File -Encoding ascii ("dist\$asset.zip.sha256")
+
+          Get-ChildItem dist | Format-Table -AutoSize
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.label }}
           path: dist/*
+          if-no-files-found: error
 
   release:
     name: Publish GitHub Release assets

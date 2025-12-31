@@ -8,15 +8,4 @@
   "DBName": "../../NyanQL/nyanID.db",
   "DBHost": "",
   "DBPort": "",
-  "MaxOpenConnections": 10,
-  "MaxIdleConnections": 5,
-  "ConnMaxLifetimeSeconds": 3600,
-  "log": {
-    "Filename": "./logs/nyanql.log",
-    "MaxSize": 5,
-    "MaxBackups": 3,
-    "MaxAge": 7,
-    "Compress": true,
-    "EnableLogging": false
-  }
 }
